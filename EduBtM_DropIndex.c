@@ -36,7 +36,7 @@
 #include "EduBtM_common.h"
 #include "EduBtM_Internal.h"
 
-
+//test
 
 /*@================================
  * EduBtM_DropIndex()
