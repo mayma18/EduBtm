@@ -80,8 +80,48 @@ Four edubtm_root_insert(
     btm_InternalEntry *entry;	/* an internal entry */
     Boolean   isTmp;
 
+    e = btm_AllocPage(catObjForFile, root, &newPid);
+    if (e < 0) ERR(e);
+    e = BfM_GetTrain(root, (char**)&rootPage, PAGE_BUF);
+    if (e < 0) ERR( e ); 
+    e = BfM_GetNewTrain(&newPid, (char**)&newPage, PAGE_BUF);
+    if (e < 0) ERR( e );
 
-    
+    /* Copy the old root page into the page allocated.*/
+    memcpy(newPage, rootPage, PAGESIZE);
+    newPage->any.hdr.pid = newPid;
+    /*Initialize the old root page as the new root page.*/
+    e = edubtm_InitInternal(root, TRUE, isTmp);
+    if(e<0) ERR(e);
+
+    /*Make the page allocated and the page created by the split of the root page to be children pages of the new root page.*/
+    /*Insert the internal index entry pointing to the page created by the split into the new root page.*/
+    rootPage->bi.slot[0] = 0; // nothing in it except the item that we're going to insert 
+    entry = &rootPage->bi.data[rootPage->bi.slot[0]];
+    memcpy(entry, item, sizeof(ShortPageID) + ALIGNED_LENGTH(sizeof(Two) + item->klen));
+    rootPage->bi.hdr.nSlots = 1;
+    rootPage->bi.hdr.free = sizeof(ShortPageID) + ALIGNED_LENGTH(sizeof(Two) + item->klen);
+    rootPage->bi.hdr.p0 = newPid.pageNo;
+    /*If the children pages of the new root page are leaf pages, set the doubly linked list between two children pages.*/
+    if(newPage->any.hdr.type & LEAF){
+        nextPid.pageNo = newPage->bl.hdr.nextPage;
+        nextPid.volNo = newPage->bl.hdr.pid.volNo;
+        e = BfM_GetTrain(&nextPage, (char**)&nextPage, PAGE_BUF);
+        if (e<0) ERR( e );
+        nextPage->hdr.prevPage = newPid.pageNo;
+        e = BfM_SetDirty(&newPage->bl.hdr.nextPage, PAGE_BUF);
+        if (e < 0) ERR( e );
+        e = BfM_FreeTrain(&newPage->bl.hdr.nextPage, PAGE_BUF);
+        if (e < 0) ERR( e );
+    }
+    e = BfM_SetDirty(&newPid, PAGE_BUF);
+    if(e<0)ERR( e );
+    e = BfM_FreeTrain(&newPid, PAGE_BUF);
+    if(e<0) ERR( e );
+    e = BfM_SetDirty(root, PAGE_BUF);
+    if(e<0)ERR( e );
+    e = BfM_FreeTrain(root, PAGE_BUF);
+    if(e<0) ERR( e );
     return(eNOERROR);
     
 } /* edubtm_root_insert() */

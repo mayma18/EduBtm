@@ -64,14 +64,30 @@ Four EduBtM_CreateIndex(
     ObjectID *catObjForFile,	/* IN catalog object of B+ tree file */
     PageID *rootPid)		/* OUT root page of the newly created B+tree */
 {
+    
     Four e;			/* error number */
     Boolean isTmp;
     SlottedPage *catPage;	/* buffer page containing the catalog object */
     sm_CatOverlayForBtree *catEntry; /* pointer to Btree file catalog information */
-    PhysicalFileID pFid;	/* physical file ID */
+    PhysicalFileID pFid;	/* physical file ID */ 
 
+    e = BfM_GetTrain((TrainID*)catObjForFile, (char**)&catPage, PAGE_BUF); // retrieve catalog object
+    if(e<0) ERR(e);
 
+    GET_PTR_TO_CATENTRY_FOR_BTREE(catObjForFile, catPage, catEntry);
+    MAKE_PHYSICALFILEID(pFid, catEntry->fid.volNo, catEntry->firstPage);
 
+    e = BfM_FreeTrain((TrainID*)catObjForFile, PAGE_BUF);
+    if(e<0) ERR(e);
+
+    e = btm_AllocPage(catObjForFile, (PageID *)&pFid, rootPid);
+    if(e<0) ERR(e);
+
+    e = edubtm_InitLeaf(rootPid, TRUE, isTmp);
+    if(e<0) ERR(e);
+
+    
     return(eNOERROR);
+    
     
 } /* EduBtM_CreateIndex() */

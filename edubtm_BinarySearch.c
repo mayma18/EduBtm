@@ -88,6 +88,30 @@ Boolean edubtm_BinarySearchInternal(
             ERR(eNOTSUPPORTED_EDUBTM);
     }
 
+    low = 0;
+    high = ipage->hdr.nSlots - 1;
+    mid = (high + low )/2;
+    while (low <= high) {
+        entry = &(ipage->data[ipage->slot[-mid]]);
+        cmp = edubtm_KeyCompare(kdesc, kval, &entry->klen);
+        if (cmp == EQUAL) {
+            *idx = mid;
+            return TRUE;
+        } 
+        else if (cmp == GREATER) low = mid + 1;
+        else if (cmp == LESS) high = mid - 1;
+        mid = (low + high) / 2;
+    }
+    //
+
+    if (high ==-1) *idx = -1;
+    return FALSE;
+
+
+
+
+
+
     
 } /* edubtm_BinarySearchInternal() */
 
@@ -134,6 +158,25 @@ Boolean edubtm_BinarySearchLeaf(
         if(kdesc->kpart[i].type!=SM_INT && kdesc->kpart[i].type!=SM_VARSTRING)
             ERR(eNOTSUPPORTED_EDUBTM);
     }
+    
+    low = 0;
+    high = lpage->hdr.nSlots - 1;
+    mid = (low + high) / 2;
+    while (low <= high) {
+        entry =&(lpage->data[lpage->slot[-mid]]);
+        cmp = edubtm_KeyCompare(kdesc, kval, &entry->klen);
+        if (cmp == EQUAL) {
+            *idx = mid;
+            return TRUE;
+        } 
+        else if (cmp == GREATER) low = mid + 1;
+        else if (cmp == LESS) high = mid - 1;
+        mid = (low + high) / 2;
+    }
+    *idx = high;
+    return FALSE;
+
+
 
     
 } /* edubtm_BinarySearchLeaf() */

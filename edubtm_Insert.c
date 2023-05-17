@@ -117,7 +117,46 @@ Four edubtm_Insert(
             ERR(eNOTSUPPORTED_EDUBTM);
     }
 
-    
+    e = BfM_GetTrain(root, &apage, PAGE_BUF);
+    if(e<0)ERR(e);
+
+    if(apage->any.hdr.type & INTERNAL){
+        /*  Determine the next child page to visit to find the leaf page to insert the <object’s key, object ID> pair.*/
+        edubtm_BinarySearchInternal(apage, kdesc, kval, &idx);
+        if(idx == -1){
+            newPid.volNo = root->volNo;
+            newPid.pageNo = apage->bi.hdr.p0;
+        }
+        else {
+            iEntryOffset = apage->bi.slot[-idx];
+            iEntry = &apage->bi.data[iEntryOffset];
+            newPid.volNo = root->volNo;
+            newPid.pageNo = iEntry->spid;
+        }
+        e = edubtm_Insert(catObjForFile, &newPid, kdesc, kval, oid, &lf, &lh, &litem, dlPool, dlHead);
+        if(e<0)ERR(e);
+        
+        /*  If split occurs in the child page determined, insert the internal index entry pointing to the new page created by the split into the root page given as a parameter.*/
+        /*  Determine the position (slot number) to insert the index entry. Offsets of the index entries must be stored in the slot array in a sorted order of the keys of the index entries. Call edubtm_InsertInternal() to insert the index entry with the slot number determined.*/
+        if(lh){
+            tKey.len = litem.klen;
+            memcpy(&tKey.val[0], &litem.kval[0], litem.klen);
+            //we need to find the position to insert the index entry
+            edubtm_BinarySearchInternal(apage, kdesc, &tKey, &idx);
+            e = edubtm_InsertInternal(catObjForFile, apage, &litem, idx, h, item); // h will return true if split occurs at the root
+            if(e<0)ERR(e);
+            // now if a split occurs at the top top root, this is EduBtM who take care of fix the root
+        }
+
+    }
+    else if (apage->any.hdr.type & LEAF){
+        /*  If the root page is a leaf page, insert the <object’s key, object ID> pair into the leaf page. */
+        e = edubtm_InsertLeaf(catObjForFile, root, apage, kdesc, kval, oid, f, h, item); // h will return true if split occurs at the root
+        if(e<0)ERR(e);
+    }
+    else{
+        ERR(eBADBTREEPAGE_BTM);
+    }
     return(eNOERROR);
     
 }   /* edubtm_Insert() */
@@ -186,8 +225,55 @@ Four edubtm_InsertLeaf(
     
     /*@ Initially the flags are FALSE */
     *h = *f = FALSE;
-    
 
+    /*Insert a new index entry into a leaf page, and if split occurs, return the internal
+index entry pointing to the new leaf page created by the split.*/
+
+    found = edubtm_BinarySearchLeaf(page, kdesc, kval, &idx); // idx tells us where to insert kval in slot Array 
+    if(found) ERR(eDUPLICATEDKEY_BTM);
+    /*Calculate the size of free area required for inserting the new index entry.*/
+    alignedKlen = ALIGNED_LENGTH(kval->len);
+    entryLen = BTM_LEAFENTRY_FIXED + alignedKlen + sizeof(ObjectID);
+
+    /*If there is available free area in the page*/
+    if (BL_CFREE(page) > entryLen + sizeof(Two)){
+        /*Compact the page if necessary.*/
+        if (BL_CFREE(page) < entryLen + sizeof(Two)){
+            edubtm_CompactLeafPage(page, NIL);
+            entryOffset = page->hdr.free;
+        }
+        else{
+            entryOffset = page->hdr.free;
+        }
+        /*Insert the new index entry with the slot number determined.*/
+        // we first shift all the slots to the right by one
+        for (i = page->hdr.nSlots - 1; i > idx; --i) {
+            page->slot[-i - 1] = page->slot[-i];
+        }
+        // a new slot is available
+        page->slot[-idx -1] = page->hdr.free;
+        entryOffset = page->hdr.free;
+        entry = &page->data[entryOffset];
+        entry->nObjects = 1;
+        entry->klen = kval->len;
+        memcpy(entry->kval, kval->val, kval->len);
+        *(ObjectID*)(&entry->kval[alignedKlen])= *oid;
+        page->hdr.free += entryLen;
+        page->hdr.nSlots++;
+
+
+    }
+    else { /*If there is no available free area in the page (page overflow), Call edubtm_SplitLeaf() to split the page. Return the internal index entry pointing to the new leaf page created by the*/
+        // we have to initialize a leaf object 
+        leaf.oid = *oid;
+        leaf.nObjects = 1;
+        leaf.klen = kval->len;
+        memcpy(leaf.kval, kval->val, kval->len);
+        e = edubtm_SplitLeaf(catObjForFile,pid, page, idx, &leaf, item); // Split Leaf will update the page and return the item to be inserted into the parent
+        if(e<0) ERR(e);
+        *h = TRUE;
+
+    }
 
     return(eNOERROR);
     
@@ -236,9 +322,39 @@ Four edubtm_InsertInternal(
     
     /*@ Initially the flag are FALSE */
     *h = FALSE;
-    
-    
 
+    // Calculate the size of free area required for inserting the new index entry.
+    entryLen = sizeof(Four) + ALIGNED_LENGTH(item->klen + sizeof(Two));
+    
+    //If there is available free area in the page
+    if (BI_FREE(page) > entryLen + sizeof(Two)){
+        if (BI_CFREE(page) < entryLen + sizeof(Two)) {
+            edubtm_CompactInternalPage(page, NIL);
+            entryOffset = page->hdr.free;
+        }
+        else {
+            entryOffset = page->hdr.free;
+        }
+        //Insert the new index entry with the slot number next to the slot number given as a parameter
+        for (i = page->hdr.nSlots - 1; i > high; i--) {
+            page->slot[-i - 1] = page->slot[-i];
+        }
+        page->slot[-high - 1] = page->hdr.free;
+        entryOffset = page->hdr.free;
+        entry = &page->data[entryOffset];
+        entry->spid = item->spid;
+        entry->klen = item->klen;
+        memcpy(entry->kval, item->kval, item->klen);
+        page->hdr.free += entryLen;
+        page->hdr.nSlots++;
+
+    }
+    else { //there is no available free area in the page (page overflow)
+        e = edubtm_SplitInternal(catObjForFile, page, high, item, ritem);
+        if(e<0) ERR(e);
+        *h = TRUE;
+
+    }
     return(eNOERROR);
     
 } /* edubtm_InsertInternal() */

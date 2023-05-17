@@ -102,13 +102,28 @@ Four EduBtM_DeleteObject(
         if(kdesc->kpart[i].type!=SM_INT && kdesc->kpart[i].type!=SM_VARSTRING)
             ERR(eNOTSUPPORTED_EDUBTM);
     }
-
-
-	/* Delete following 3 lines before implement this function */
-	printf("and delete operation has not been implemented yet.\n");
-	return(eNOTSUPPORTED_EDUBTM);
-
     
-    return(eNOERROR);
-    
+    e = edubtm_Delete(catObjForFile, root, kdesc, kval, oid, &lf, &lh, &item, dlPool, dlHead);
+    if(e<0)ERR(e);
+
+    e = BfM_GetTrain(catObjForFile, (char**)&catPage, PAGE_BUF);
+    if(e<0)ERR(e);
+
+    GET_PTR_TO_CATENTRY_FOR_BTREE(catObjForFile, catPage, catEntry);
+
+    MAKE_PHYSICALFILEID(pFid, catEntry->fid.volNo, catEntry->firstPage); // because root can not be the same anymore 
+
+    e = BfM_FreeTrain(catObjForFile, PAGE_BUF);
+    if(e<0)ERR(e); 
+
+    if (lf) {
+        e = btm_root_delete(&pFid, root, dlPool, dlHead);
+        if(e<0)ERR(e);
+    }
+
+    if (lh) {
+        e = edubtm_root_insert(catObjForFile, root, &item);
+        if(e<0)ERR( e );
+    }
+    return(eNOERROR);   
 }   /* EduBtM_DeleteObject() */

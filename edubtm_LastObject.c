@@ -93,7 +93,48 @@ Four edubtm_LastObject(
         if(kdesc->kpart[i].type!=SM_INT && kdesc->kpart[i].type!=SM_VARSTRING)
             ERR(eNOTSUPPORTED_EDUBTM);
     }
+
+    /*same resoning as first object, except we retrieve the right most index entry of b+tree*/
+    e = BfM_GetTrain(&root, (char**)&apage, PAGE_BUF);
+    if(e<0)ERR(e);
+    curPid.pageNo = root->pageNo;
+    curPid.volNo = root->volNo;
+
+    while (apage->any.hdr.type & LEAF == FALSE) {
+        // we choose the last right child until the child is a Leaf page 
+        iEntryOffset = apage->bi.slot[-(apage->bi.hdr.nSlots - 1)];
+        iEntry = (btm_InternalEntry*)&apage->bi.data[iEntryOffset];
+        child.pageNo = iEntry->spid;
+        child.volNo = root->volNo;
+        e = BfM_FreeTrain(&curPid, PAGE_BUF);
+        if(e<0)ERR(e);
+        e = BfM_GetTrain(&child, (char**)&apage, PAGE_BUF);
+        if(e<0)ERR(e);
+        curPid = child;
+    }
+    // we now have our right leaf page of our  B+ tree
+    lEntryOffset = apage->bl.slot[-(apage->bl.hdr.nSlots - 1)];
+    lEntry = &apage->bl.data[lEntryOffset];
+    alignedKlen = ALIGNED_LENGTH(lEntry->klen);
+    //cursor setup
+    cursor->flag = CURSOR_ON;
+    cursor->key.len = lEntry->klen;
+    memcpy(cursor->key.val, lEntry->kval, lEntry->klen);
+    cursor->leaf = curPid;
+    cursor->slotNo = apage->bl.hdr.nSlots - 1;
+    cursor->oid = *(ObjectID*)&lEntry->kval[alignedKlen];
+
+    cmp = edubtm_KeyCompare(kdesc, &cursor->key, stopKval);
+
+    if (cmp == EQUAL) {
+        cursor->flag = CURSOR_ON;
+        if (stopCompOp == SM_GT) cursor->flag = CURSOR_EOS;
+    }
+    else if (cmp == GREATER) cursor->flag = CURSOR_ON;
+    else if (cmp == LESS) cursor->flag = CURSOR_EOS;
     
+    e = BfM_FreeTrain(&curPid, PAGE_BUF);
+    if(e<0)ERR(e);
 
     return(eNOERROR);
     

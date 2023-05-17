@@ -89,7 +89,45 @@ Four edubtm_FirstObject(
         if(kdesc->kpart[i].type!=SM_INT && kdesc->kpart[i].type!=SM_VARSTRING)
             ERR(eNOTSUPPORTED_EDUBTM);
     }
-    
+
+    e = BfM_GetTrain(&root, (char**)&apage, PAGE_BUF);
+    if(e<0)ERR(e);
+    curPid.pageNo = root->pageNo;
+    curPid.volNo = root->volNo;
+
+    while (apage->any.hdr.type & LEAF == FALSE) {
+        // we choose the first left child until the child is a Leaf page 
+        child.pageNo = apage->bi.hdr.p0;
+        child.pageNo = root->volNo;
+        e = BfM_FreeTrain(&curPid, PAGE_BUF);
+        if (e<0)ERR(e);
+        e = BfM_GetTrain(&child, (char**)&apage, PAGE_BUF);
+        if(e<0)ERR(e);
+        curPid = child;
+    }
+
+    // we now have our left leaf page of our tree
+
+    lEntry =&(apage->bl.data[apage->bl.slot[0]]);
+    alignedKlen = ALIGNED_LENGTH(lEntry->klen);
+    //cursor setup
+    cursor->flag = CURSOR_ON;
+    cursor->key.len = lEntry->klen;
+    memcpy(cursor->key.val, lEntry->kval, lEntry->klen);
+    cursor->leaf = curPid;
+    cursor->slotNo = 0;
+    cursor->oid = *(ObjectID*)&(lEntry->kval[alignedKlen]);
+
+    cmp = edubtm_KeyCompare(kdesc, &cursor->key, stopKval);
+
+    if (cmp == EQUAL) {
+        cursor->flag = CURSOR_ON;
+        if (stopCompOp == SM_LT) cursor->flag = CURSOR_EOS; 
+    }
+    else if (cmp == GREATER) cursor->flag = CURSOR_EOS;
+    else if (cmp == LESS) cursor->flag = CURSOR_ON;
+    e = BfM_FreeTrain(&curPid, PAGE_BUF);
+    if(e<0)ERR(e);
 
     return(eNOERROR);
     

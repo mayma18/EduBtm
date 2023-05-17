@@ -91,8 +91,44 @@ Four edubtm_KeyCompare(
         if(kdesc->kpart[i].type!=SM_INT && kdesc->kpart[i].type!=SM_VARSTRING)
             ERR(eNOTSUPPORTED_EDUBTM);
     }
+    /*  Compare two key values given by parameters, and return the comparison result */
+    if (kdesc->flag==KEYFLAG_UNIQUE){
+        if (kdesc->kpart[0].type == SM_VARSTRING) {
+            len1 = key1->len;
+            len2 = key2->len;
 
-        
-    return(EQUAL);
+            for (i=2; i< MIN(len1, len2); i++) {
+                if (key1->val[i] == 0 && key2->val[i] == 0) {
+                    return EQUAL;
+                } else if(key1->val[i] < key2->val[i]) {
+                    return LESS;
+                } else if(key1->val[i] > key2->val[i]) {
+                    return GREAT;
+                }
+            }
+
+            if (len1 == len2) {
+                return EQUAL;
+            } else if(len1 > len2) {
+                return GREAT;
+            } else if(len1 < len2) {
+                return LESS;
+            }
+
+        }
+        else if (kdesc->kpart[0].type == SM_INT) {
+            i1 = *(Four_Invariable*)key1->val;
+            i2 = *(Four_Invariable*)key2->val;
+
+            if (i1 == i2) {
+                return EQUAL;
+            } else if(i1 > i2) {
+                return GREAT;
+            } else if(i1 < i2) {
+                return LESS;
+            }
+        }
+    }
+    else ERR(eNOTSUPPORTED_EDUBTM);
     
 }   /* edubtm_KeyCompare() */

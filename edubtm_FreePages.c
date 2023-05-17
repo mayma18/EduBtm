@@ -81,8 +81,39 @@ Four edubtm_FreePages(
     btm_LeafEntry       *lEntry;        /* a leaf entry */
     DeallocListElem     *dlElem;        /* an element of dealloc list */
 
+    e =BfM_GetTrain(curPid, (char**)&apage, PAGE_BUF);
+    if(e<0)ERR(e);
 
-    
+    if(apage->any.hdr.type & INTERNAL) {
+        tPid.volNo = curPid->volNo;
+        tPid.pageNo = apage->bi.hdr.p0;
+        e = edubtm_FreePages(pFid, &tPid, dlPool, dlHead);
+        if(e<0) ERR(e);
+        for (i=0; i<apage->bi.hdr.nSlots; ++i) {
+            iEntryOffset = apage->bi.slot[-i];
+            iEntry = &apage->bi.data[iEntryOffset];
+            tPid.pageNo = iEntry->spid;
+            tPid.volNo = curPid->volNo;
+            e = edubtm_FreePages(pFid, &tPid, dlPool, dlHead);
+            if(e<0)ERR(e);
+        }
+    }
+
+    apage->any.hdr.type = FREEPAGE;
+    e = BfM_SetDirty(curPid, PAGE_BUF);
+    if(e<0)ERR(e);
+
+    e = BfM_FreeTrain(curPid, PAGE_BUF);
+    if(e<0)ERR(e);
+
+    e = Util_getElementFromPool(dlPool, &dlElem);
+    if(e<0)ERR(e);
+
+    dlElem->type = DL_PAGE;
+    dlElem->elem.pid= *curPid;
+    dlElem->next = dlHead->next;
+    dlHead->next = dlElem;
+
     return(eNOERROR);
     
 }   /* edubtm_FreePages() */

@@ -36,7 +36,7 @@
 #include "EduBtM_common.h"
 #include "EduBtM_Internal.h"
 
-//test
+
 
 /*@================================
  * EduBtM_DropIndex()
@@ -63,9 +63,10 @@ Four EduBtM_DropIndex(
     Four e;			/* for the error number */
 
 
-    /*@ Free all pages concerned with the root. */
 
-	
+    /*@ Free all pages concerned with the root. */
+    e = edubtm_FreePages(pFid, rootPid, dlPool, dlHead);
+    if(e<0) ERR(e);
     return(eNOERROR);
     
 } /* EduBtM_DropIndex() */
